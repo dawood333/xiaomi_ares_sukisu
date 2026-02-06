@@ -42,7 +42,9 @@ jobs:
           remove-codeql: 'true'
 
       - name: Install packages
-        run: sudo apt update && sudo apt install -y git ccache p7zip-full wget
+        run: |
+          sudo apt update
+          sudo apt install -y git ccache p7zip-full wget zstd
 
       - name: Restore ccache
         uses: actions/cache@v4
@@ -54,21 +56,21 @@ jobs:
 
       - uses: actions/checkout@v5
 
-      - name: Get Kernel Source Code
+      - name: Get Kernel Source
         uses: actions/checkout@v5
         with:
           repository: MerCuJerry/android_kernel_aresin
           ref: ${{ inputs.SOURCECODE_BRANCH }}
           path: kernel
 
-      # ========= TOOLCHAIN (AOSP Clang r416183) =========
-      - name: Setup AOSP Clang r416183
+      # ========== SETUP NEUTRON CLANG ==========
+      - name: Download Neutron Clang
         run: |
           mkdir -p toolchain
           cd toolchain
-          wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-10.0.0_r41/clang-r416183-linux-x86_64.tar.gz
-          tar -xzf clang-r416183-linux-x86_64.tar.gz
-          rm clang-r416183-linux-x86_64.tar.gz
+          wget -q https://github.com/Neutron-Toolchains/clang-build-catalogue/releases/download/06032023/neutron-clang-06032023.tar.zst
+          tar --use-compress-program=unzstd -xf neutron-clang-06032023.tar.zst
+          rm neutron-clang-06032023.tar.zst
 
       - name: Set up SukiSU
         working-directory: kernel
@@ -125,7 +127,7 @@ jobs:
           cat Patches/ares_user_defconfig_append >> \
           kernel/arch/arm64/configs/ares_user_defconfig
 
-      - name: Build Kernel for K40GE
+      - name: Build Kernel
         working-directory: kernel
         env:
           args: |+
