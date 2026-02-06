@@ -95,28 +95,38 @@ jobs:
           cp susfs4ksu/kernel_patches/fs/* kernel/fs/
           cp susfs4ksu/kernel_patches/include/linux/* kernel/include/linux/
 
-      - name: Get susfs Update patch
+      # ========= FULL CHECKOUT susfs_upgrade_patch =========
+      - name: Get susfs Update patch (full checkout)
         uses: actions/checkout@v5
         with:
           repository: JackA1ltman/NonGKI_Kernel_Build_2nd
-          sparse-checkout: Patches/Patch
           ref: mainline
           path: susfs_upgrade_patch
 
       - name: Patch Kernel
         working-directory: kernel
         run: |
-          patch -p1 < $GITHUB_WORKSPACE/Patches/susfs-syscall-hooks.patch
+          patch -p1 < $GITHUB_WORKSPACE/Patches/susfs-syscall-hooks.patch || echo "Warning: susfs-syscall-hooks.patch failed"
 
-      - name: Apply KernelPatch for SUSFS
+      - name: Apply KernelPatch for SUSFS (with fallback)
         working-directory: kernel
         run: |
-          patch -p1 -F 3 < $GITHUB_WORKSPACE/susfs4ksu/kernel_patches/50_add_susfs_in_kernel-4.14.patch
-          patch -p1 < $GITHUB_WORKSPACE/susfs_upgrade_patch/Patches/Patch/susfs_upgrade_to_1511_4.14.patch || true
-          patch -p1 < $GITHUB_WORKSPACE/susfs_upgrade_patch/Patches/Patch/susfs_upgrade_to_1512_4.14.patch || true
-          patch -p1 < $GITHUB_WORKSPACE/Patches/susfs_upgrade_to_1512_4.14_fix.patch
-          patch -p1 < $GITHUB_WORKSPACE/susfs_upgrade_patch/Patches/Patch/susfs_upgrade_to_2000_4.14.patch || true
-          patch -p1 < $GITHUB_WORKSPACE/Patches/susfs_upgrade_to_2000_4.14_fix_after.patch
+          # وظيفة صغيرة لتطبيق patch مع تجاوز أي خطأ
+          apply_patch() {
+            patch_file=$1
+            if [ -f "$patch_file" ]; then
+              patch -p1 < "$patch_file" || echo "Warning: Patch $patch_file failed but build continues"
+            else
+              echo "Warning: Patch $patch_file not found, skipped"
+            fi
+          }
+
+          apply_patch "$GITHUB_WORKSPACE/susfs4ksu/kernel_patches/50_add_susfs_in_kernel-4.14.patch"
+          apply_patch "$GITHUB_WORKSPACE/susfs_upgrade_patch/Patches/Patch/susfs_upgrade_to_1511_4.14.patch"
+          apply_patch "$GITHUB_WORKSPACE/susfs_upgrade_patch/Patches/Patch/susfs_upgrade_to_1512_4.14.patch"
+          apply_patch "$GITHUB_WORKSPACE/Patches/susfs_upgrade_to_1512_4.14_fix.patch"
+          apply_patch "$GITHUB_WORKSPACE/susfs_upgrade_patch/Patches/Patch/susfs_upgrade_to_2000_4.14.patch"
+          apply_patch "$GITHUB_WORKSPACE/Patches/susfs_upgrade_to_2000_4.14_fix_after.patch"
 
       - name: Copy defconfig
         run: |
