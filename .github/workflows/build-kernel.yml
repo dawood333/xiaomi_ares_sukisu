@@ -20,15 +20,15 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    name: Build Kernel for K40GE
+    strategy:
+      fail-fast: false
     env:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
       CCACHE_HARDLINK: "true"
       CCACHE_DIR: /home/runner/.ccache
       CCACHE_MAXSIZE: 8G
-    strategy:
-      fail-fast: false
-    name: Build Kernel for K40GE
 
     steps:
       - name: Maximize build space
@@ -41,8 +41,8 @@ jobs:
           remove-haskell: 'true'
           remove-codeql: 'true'
 
-      - name: Install Package
-        run: sudo apt update && sudo apt install -y p7zip-full git ccache
+      - name: Install packages
+        run: sudo apt update && sudo apt install -y git ccache p7zip-full zstd wget
 
       - name: Restore ccache
         uses: actions/cache@v4
@@ -61,10 +61,15 @@ jobs:
           ref: ${{ inputs.SOURCECODE_BRANCH }}
           path: kernel
 
-      # ===== TOOLCHAIN (Proton Clang 14) =====
-      - name: Setup Proton Clang Toolchain
+      # ========= TOOLCHAIN (Proton Clang 14 – correct way) =========
+      - name: Setup Proton Clang 14 Toolchain
         run: |
-          git clone --depth=1 -b clang-14 https://github.com/kdrag0n/proton-clang.git toolchain
+          mkdir -p toolchain
+          cd toolchain
+          wget -q https://github.com/kdrag0n/proton-clang/releases/download/2022-10-06/proton-clang-20221006.tar.zst
+          tar --use-compress-program=unzstd -xf proton-clang-20221006.tar.zst
+          rm proton-clang-20221006.tar.zst
+          mv proton-clang-*/* .
 
       - name: Set up SukiSU
         working-directory: kernel
@@ -72,8 +77,8 @@ jobs:
           echo DATE=$(date +%F) >> $GITHUB_ENV
           export BRANCH=${{ inputs.SUKISU_BRANCH }}
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s $BRANCH
-          cd ./KernelSU
-          export KSU_VERSION=$(expr $(/usr/bin/git rev-list --count main) "+" 40000 "-" 2815)
+          cd KernelSU
+          KSU_VERSION=$(expr $(git rev-list --count main) + 40000 - 2815)
           echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
           sed -i "s/DKSU_VERSION=12800/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile
 
@@ -86,8 +91,8 @@ jobs:
       - name: Get susfs4ksu
         run: |
           git clone -b kernel-4.14 --depth=1 https://gitlab.com/simonpunk/susfs4ksu.git
-          cp $GITHUB_WORKSPACE/susfs4ksu/kernel_patches/fs/* $GITHUB_WORKSPACE/kernel/fs/
-          cp $GITHUB_WORKSPACE/susfs4ksu/kernel_patches/include/linux/* $GITHUB_WORKSPACE/kernel/include/linux/
+          cp susfs4ksu/kernel_patches/fs/* kernel/fs/
+          cp susfs4ksu/kernel_patches/include/linux/* kernel/include/linux/
 
       - name: Get susfs Update patch
         uses: actions/checkout@v5
@@ -115,11 +120,11 @@ jobs:
       - name: Copy defconfig
         run: |
           if [ "${{ inputs.enable_feature_kpm }}" = "true" ]; then
-            echo "CONFIG_KALLSYMS_ALL=y" >> $GITHUB_WORKSPACE/Patches/ares_user_defconfig_append
-            echo "CONFIG_KPM=y" >> $GITHUB_WORKSPACE/Patches/ares_user_defconfig_append
+            echo "CONFIG_KALLSYMS_ALL=y" >> Patches/ares_user_defconfig_append
+            echo "CONFIG_KPM=y" >> Patches/ares_user_defconfig_append
           fi
-          cat $GITHUB_WORKSPACE/Patches/ares_user_defconfig_append >> \
-          $GITHUB_WORKSPACE/kernel/arch/arm64/configs/ares_user_defconfig
+          cat Patches/ares_user_defconfig_append >> \
+          kernel/arch/arm64/configs/ares_user_defconfig
 
       - name: Build Kernel for K40GE
         working-directory: kernel
