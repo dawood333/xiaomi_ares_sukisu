@@ -11,7 +11,7 @@ on:
       SOURCECODE_BRANCH:
         description: 'Kernel source branch'
         required: true
-        default: 'U-dev'
+        default: 'Rio-23.0'
 
 jobs:
   build:
@@ -55,7 +55,7 @@ jobs:
       - name: Get Kernel Source
         uses: actions/checkout@v5
         with:
-          repository: MerCuJerry/android_kernel_aresin
+          repository: dawood333/android_kernel_ares
           ref: ${{ inputs.SOURCECODE_BRANCH }}
           path: kernel
 
