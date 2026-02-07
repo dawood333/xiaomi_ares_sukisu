@@ -46,6 +46,7 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y git ccache p7zip-full wget
+
       - name: Restore ccache
         uses: actions/cache@v4
         with:
@@ -53,6 +54,7 @@ jobs:
           key: ccache-${{ runner.os }}-${{ github.ref }}
           restore-keys: |
             ccache-${{ runner.os }}-
+
       - uses: actions/checkout@v5
 
       - name: Get Kernel Source
@@ -89,6 +91,15 @@ jobs:
             echo "CONFIG_CGROUP_PIDS=y" >> Patches/ares_user_defconfig_append
             echo "CONFIG_MEMCG=y" >> Patches/ares_user_defconfig_append
             echo "CONFIG_LXC=y" >> Patches/ares_user_defconfig_append
+            echo "CONFIG_KPM=y" >> Patches/ares_user_defconfig_append
+            echo "CONFIG_SYSVIPC=y" >> Patches/ares_user_defconfig_append
+            echo "CONFIG_PID_NS=y" >> Patches/ares_user_defconfig_append
+            echo "CONFIG_UTS_NS=y" >> Patches/ares_user_defconfig_append
+            echo "CONFIG_MNT_NS=y" >> Patches/ares_user_defconfig_append
+            echo "CONFIG_IPC_NS=y" >> Patches/ares_user_defconfig_append
+            echo "CONFIG_DEVTMPFS=y" >> Patches/ares_user_defconfig_append
+            echo "CONFIG_KALLSYMS=y" >> Patches/ares_user_defconfig_append
+            echo "CONFIG_KALLSYMS_ALL=y" >> Patches/ares_user_defconfig_append
           fi
 
           # دمج defconfig النهائي
