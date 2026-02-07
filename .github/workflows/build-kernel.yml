@@ -4,23 +4,19 @@ on:
   workflow_dispatch:
     inputs:
       enable_feature_kpm:
-        description: "是否启用kpm"
+        description: "Enable KPM feature"
         required: false
         default: false
         type: boolean
       SOURCECODE_BRANCH:
-        description: '源码分支名称或修订版'
+        description: 'Kernel source branch'
         required: true
         default: 'U-dev'
-      SUKISU_BRANCH:
-        description: 'SukiSU 分支名称或修订版'
-        required: true
-        default: 'susfs-main'
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    name: Build Kernel for K40GE
+    name: Build Kernel for MTK 4.14
     strategy:
       fail-fast: false
     env:
@@ -44,7 +40,7 @@ jobs:
       - name: Install packages
         run: |
           sudo apt update
-          sudo apt install -y git ccache p7zip-full wget zstd
+          sudo apt install -y git ccache p7zip-full wget
 
       - name: Restore ccache
         uses: actions/cache@v4
@@ -63,79 +59,23 @@ jobs:
           ref: ${{ inputs.SOURCECODE_BRANCH }}
           path: kernel
 
-      # ========== SETUP NEUTRON CLANG ==========
-      - name: Download Neutron Clang
+      # ========== SETUP CLANG 20 ==========
+      - name: Download Clang 20
         run: |
-          mkdir -p toolchain
-          cd toolchain
-          wget -q https://github.com/Neutron-Toolchains/clang-build-catalogue/releases/download/06032023/neutron-clang-06032023.tar.zst
-          tar --use-compress-program=unzstd -xf neutron-clang-06032023.tar.zst
-          rm neutron-clang-06032023.tar.zst
-
-      - name: Set up SukiSU
-        working-directory: kernel
-        run: |
-          echo DATE=$(date +%F) >> $GITHUB_ENV
-          export BRANCH=${{ inputs.SUKISU_BRANCH }}
-          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s $BRANCH
-          cd KernelSU
-          KSU_VERSION=$(expr $(git rev-list --count main) + 40000 - 2815)
-          echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
-          sed -i "s/DKSU_VERSION=12800/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile
-
-      - name: Get SukiSU Patches
-        uses: actions/checkout@v5
-        with:
-          repository: SukiSU-Ultra/SukiSU_patch
-          path: sukisu_patch
-
-      - name: Get susfs4ksu
-        run: |
-          git clone -b kernel-4.14 --depth=1 https://gitlab.com/simonpunk/susfs4ksu.git
-          cp susfs4ksu/kernel_patches/fs/* kernel/fs/
-          cp susfs4ksu/kernel_patches/include/linux/* kernel/include/linux/
-
-      # ========= FULL CHECKOUT susfs_upgrade_patch =========
-      - name: Get susfs Update patch (full checkout)
-        uses: actions/checkout@v5
-        with:
-          repository: JackA1ltman/NonGKI_Kernel_Build_2nd
-          ref: mainline
-          path: susfs_upgrade_patch
-
-      - name: Patch Kernel
-        working-directory: kernel
-        run: |
-          patch -p1 < $GITHUB_WORKSPACE/Patches/susfs-syscall-hooks.patch || echo "Warning: susfs-syscall-hooks.patch failed"
-
-      - name: Apply KernelPatch for SUSFS (with fallback)
-        working-directory: kernel
-        run: |
-          # وظيفة صغيرة لتطبيق patch مع تجاوز أي خطأ
-          apply_patch() {
-            patch_file=$1
-            if [ -f "$patch_file" ]; then
-              patch -p1 < "$patch_file" || echo "Warning: Patch $patch_file failed but build continues"
-            else
-              echo "Warning: Patch $patch_file not found, skipped"
-            fi
-          }
-
-          apply_patch "$GITHUB_WORKSPACE/susfs4ksu/kernel_patches/50_add_susfs_in_kernel-4.14.patch"
-          apply_patch "$GITHUB_WORKSPACE/susfs_upgrade_patch/Patches/Patch/susfs_upgrade_to_1511_4.14.patch"
-          apply_patch "$GITHUB_WORKSPACE/susfs_upgrade_patch/Patches/Patch/susfs_upgrade_to_1512_4.14.patch"
-          apply_patch "$GITHUB_WORKSPACE/Patches/susfs_upgrade_to_1512_4.14_fix.patch"
-          apply_patch "$GITHUB_WORKSPACE/susfs_upgrade_patch/Patches/Patch/susfs_upgrade_to_2000_4.14.patch"
-          apply_patch "$GITHUB_WORKSPACE/Patches/susfs_upgrade_to_2000_4.14_fix_after.patch"
+          mkdir -p clang
+          wget -q https://github.com/ZyCromerZ/Clang/releases/download/20.0.0git-20241227-release/Clang-20.0.0git-20241227.tar.gz
+          tar -C clang/ -zxvf Clang-20.0.0git-20241227.tar.gz
+          rm Clang-20.0.0git-20241227.tar.gz
 
       - name: Copy defconfig
         run: |
+          # إضافة KPM إذا فعّل المستخدم
           if [ "${{ inputs.enable_feature_kpm }}" = "true" ]; then
             echo "CONFIG_KALLSYMS_ALL=y" >> Patches/ares_user_defconfig_append
             echo "CONFIG_KPM=y" >> Patches/ares_user_defconfig_append
           fi
-          cat Patches/ares_user_defconfig_append >> \
-          kernel/arch/arm64/configs/ares_user_defconfig
+          # دمج defconfig
+          cat Patches/ares_user_defconfig_append >> kernel/arch/arm64/configs/ares_user_defconfig
 
       - name: Build Kernel
         working-directory: kernel
@@ -149,19 +89,19 @@ jobs:
             O=out KCFLAGS+=-O2 KCFLAGS_PERF+=-O3
         run: |
           export KBUILD_BUILD_TIMESTAMP=$(date)
-          export PATH=/usr/lib/ccache:$GITHUB_WORKSPACE/toolchain/bin:$PATH
+          export PATH=$GITHUB_WORKSPACE/clang/bin:$PATH
           make -j$(nproc --all) ${args} ares_user_defconfig all
 
       - name: Upload Kernel Image
         uses: actions/upload-artifact@v4
         with:
-          name: K40GE_Image
+          name: MTK_Kernel_Image
           path: kernel/out/arch/arm64/boot/Image
           compression-level: 9
 
       - name: Upload DTB
         uses: actions/upload-artifact@v4
         with:
-          name: K40GE_DTB
+          name: MTK_Kernel_DTB
           path: kernel/out/arch/arm64/boot/dtb
           compression-level: 9
