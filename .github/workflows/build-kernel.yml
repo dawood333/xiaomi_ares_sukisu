@@ -11,7 +11,7 @@ on:
       SOURCECODE_BRANCH:
         description: 'Kernel source branch'
         required: true
-        default: 'Rio-23.0'
+        default: 'rio-23.0'
 
 jobs:
   build:
