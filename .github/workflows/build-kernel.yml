@@ -1,107 +1,119 @@
 name: Build Kernel
 
-on:
-  workflow_dispatch:
-    inputs:
-      enable_feature_kpm:
-        description: "Enable KPM feature"
-        required: false
-        default: false
-        type: boolean
-      SOURCECODE_BRANCH:
-        description: 'Kernel source branch'
-        required: true
-        default: 'rio-23.0'
+on: workflow_dispatch: inputs: enable_feature_kpm: description: "Enable KPM feature" required: false default: false type: boolean SOURCECODE_BRANCH: description: 'Kernel source branch' required: true default: 'U-dev'
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    name: Build Kernel for MTK 4.14
-    strategy:
-      fail-fast: false
+jobs: build: runs-on: ubuntu-latest name: Build Kernel for MTK 4.14 strategy: fail-fast: false env: CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion" CCACHE_NOHASHDIR: "true" CCACHE_HARDLINK: "true" CCACHE_DIR: /home/runner/.ccache CCACHE_MAXSIZE: 8G
+
+steps:
+  - name: Maximize build space
+    uses: easimon/maximize-build-space@master
+    with:
+      root-reserve-mb: 8192
+      temp-reserve-mb: 2048
+      remove-dotnet: 'true'
+      remove-android: 'true'
+      remove-haskell: 'true'
+      remove-codeql: 'true'
+
+  - name: Install packages
+    run: |
+      sudo apt update
+      sudo apt install -y git ccache p7zip-full wget
+
+  - name: Restore ccache
+    uses: actions/cache@v4
+    with:
+      path: /home/runner/.ccache
+      key: ccache-${{ runner.os }}-${{ github.ref }}
+      restore-keys: |
+        ccache-${{ runner.os }}-
+
+  - uses: actions/checkout@v5
+
+  - name: Get Kernel Source
+    uses: actions/checkout@v5
+    with:
+      repository: MerCuJerry/android_kernel_aresin
+      ref: ${{ inputs.SOURCECODE_BRANCH }}
+      path: kernel
+
+  - name: Download Clang 20
+    run: |
+      mkdir -p clang
+      wget -q https://github.com/ZyCromerZ/Clang/releases/download/20.0.0git-20241227-release/Clang-20.0.0git-20241227.tar.gz
+      tar -C clang/ -zxvf Clang-20.0.0git-20241227.tar.gz
+      rm Clang-20.0.0git-20241227.tar.gz
+
+  - name: Copy defconfig
+    run: |
+      if [ "${{ inputs.enable_feature_kpm }}" = "true" ]; then
+        echo "CONFIG_KALLSYMS_ALL=y" >> Patches/ares_user_defconfig_append
+        echo "CONFIG_KPM=y" >> Patches/ares_user_defconfig_append
+      fi
+      cat Patches/ares_user_defconfig_append >> kernel/arch/arm64/configs/ares_user_defconfig
+
+  - name: Enable LXC support
+    working-directory: kernel
+    run: |
+      echo "Enabling LXC kernel options for LXC / rootless support..."
+
+      scripts/config --enable CONFIG_NAMESPACES
+      scripts/config --enable CONFIG_UTS_NS
+      scripts/config --enable CONFIG_IPC_NS
+      scripts/config --enable CONFIG_PID_NS
+      scripts/config --enable CONFIG_NET_NS
+      scripts/config --enable CONFIG_MNT_NS
+      scripts/config --enable CONFIG_USER_NS
+
+      scripts/config --enable CONFIG_CGROUPS
+      scripts/config --enable CONFIG_CGROUP_FREEZER
+      scripts/config --enable CONFIG_CGROUP_PIDS
+      scripts/config --enable CONFIG_CGROUP_CPUACCT
+      scripts/config --enable CONFIG_CGROUP_DEVICE
+      scripts/config --enable CONFIG_CGROUP_SCHED
+      scripts/config --enable CONFIG_CGROUP_BPF
+      scripts/config --enable CONFIG_CGROUP_MISC
+
+      scripts/config --enable CONFIG_VETH
+      scripts/config --enable CONFIG_BRIDGE
+      scripts/config --enable CONFIG_BRIDGE_NETFILTER
+
+      scripts/config --enable CONFIG_DEVPTS_MULTIPLE_INSTANCES
+      scripts/config --enable CONFIG_EVENTFD
+      scripts/config --enable CONFIG_EPOLL
+      scripts/config --enable CONFIG_UNIX
+      scripts/config --enable CONFIG_SYSVIPC
+      scripts/config --enable CONFIG_FHANDLE
+
+      scripts/config --disable CONFIG_ANDROID_PARANOID_NETWORK || true
+
+      make olddefconfig
+
+  - name: Build Kernel
+    working-directory: kernel
     env:
-      CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
-      CCACHE_NOHASHDIR: "true"
-      CCACHE_HARDLINK: "true"
-      CCACHE_DIR: /home/runner/.ccache
-      CCACHE_MAXSIZE: 8G
+      args: |+
+        LLVM=1 ARCH=arm64
+        CROSS_COMPILE=aarch64-linux-gnu-
+        CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+        CROSS_COMPILE_COMPAT=arm-linux-gnueabi-
+        CC=clang LD=ld.lld HOSTLD=ld.lld
+        O=out KCFLAGS+=-O2 KCFLAGS_PERF+=-O3
+    run: |
+      export KBUILD_BUILD_TIMESTAMP=$(date)
+      export PATH=$GITHUB_WORKSPACE/clang/bin:$PATH
+      make -j$(nproc --all) ${args} ares_user_defconfig all
 
-    steps:
-      - name: Maximize build space
-        uses: easimon/maximize-build-space@master
-        with:
-          root-reserve-mb: 8192
-          temp-reserve-mb: 2048
-          remove-dotnet: 'true'
-          remove-android: 'true'
-          remove-haskell: 'true'
-          remove-codeql: 'true'
+  - name: Upload Kernel Image
+    uses: actions/upload-artifact@v4
+    with:
+      name: MTK_Kernel_Image
+      path: kernel/out/arch/arm64/boot/Image
+      compression-level: 9
 
-      - name: Install packages
-        run: |
-          sudo apt update
-          sudo apt install -y git ccache p7zip-full wget
-
-      - name: Restore ccache
-        uses: actions/cache@v4
-        with:
-          path: /home/runner/.ccache
-          key: ccache-${{ runner.os }}-${{ github.ref }}
-          restore-keys: |
-            ccache-${{ runner.os }}-
-
-      - uses: actions/checkout@v5
-
-      - name: Get Kernel Source
-        uses: actions/checkout@v5
-        with:
-          repository: dawood333/android_kernel_ares
-          ref: ${{ inputs.SOURCECODE_BRANCH }}
-          path: kernel
-
-      # ========== SETUP CLANG 20 ==========
-      - name: Download Clang 20
-        run: |
-          mkdir -p clang
-          wget -q https://github.com/ZyCromerZ/Clang/releases/download/20.0.0git-20241227-release/Clang-20.0.0git-20241227.tar.gz
-          tar -C clang/ -zxvf Clang-20.0.0git-20241227.tar.gz
-          rm Clang-20.0.0git-20241227.tar.gz
-
-      - name: Copy defconfig
-        run: |
-          # إضافة KPM إذا فعّل المستخدم
-          if [ "${{ inputs.enable_feature_kpm }}" = "true" ]; then
-            echo "CONFIG_KALLSYMS_ALL=y" >> Patches/ares_user_defconfig_append
-            echo "CONFIG_KPM=y" >> Patches/ares_user_defconfig_append
-          fi
-          # دمج defconfig
-          cat Patches/ares_user_defconfig_append >> kernel/arch/arm64/configs/ares_user_defconfig
-
-      - name: Build Kernel
-        working-directory: kernel
-        env:
-          args: |+
-            LLVM=1 ARCH=arm64
-            CROSS_COMPILE=aarch64-linux-gnu-
-            CROSS_COMPILE_ARM32=arm-linux-gnueabi-
-            CROSS_COMPILE_COMPAT=arm-linux-gnueabi-
-            CC=clang LD=ld.lld HOSTLD=ld.lld
-            O=out KCFLAGS+=-O2 KCFLAGS_PERF+=-O3
-        run: |
-          export KBUILD_BUILD_TIMESTAMP=$(date)
-          export PATH=$GITHUB_WORKSPACE/clang/bin:$PATH
-          make -j$(nproc --all) ${args} ares_user_defconfig all
-
-      - name: Upload Kernel Image
-        uses: actions/upload-artifact@v4
-        with:
-          name: MTK_Kernel_Image
-          path: kernel/out/arch/arm64/boot/Image
-          compression-level: 9
-
-      - name: Upload DTB
-        uses: actions/upload-artifact@v4
-        with:
-          name: MTK_Kernel_DTB
-          path: kernel/out/arch/arm64/boot/dtb
-          compression-level: 9
+  - name: Upload DTB
+    uses: actions/upload-artifact@v4
+    with:
+      name: MTK_Kernel_DTB
+      path: kernel/out/arch/arm64/boot/dtb
+      compression-level: 9
