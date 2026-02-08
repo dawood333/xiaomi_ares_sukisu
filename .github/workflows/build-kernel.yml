@@ -1,4 +1,4 @@
-Name: Build Kernel
+name: Build Kernel
 
 on:
   workflow_dispatch:
@@ -30,6 +30,15 @@ jobs:
       CCACHE_HARDLINK: "true"
       CCACHE_DIR: /home/runner/.ccache
       CCACHE_MAXSIZE: 8G
+      LLVM: "1"
+      ARCH: "arm64"
+      CROSS_COMPILE: "aarch64-linux-gnu-"
+      CROSS_COMPILE_ARM32: "arm-linux-gnueabi-"
+      CC: "clang"
+      LD: "ld.lld"
+      HOSTLD: "ld.lld"
+      O: "out"
+      KCFLAGS: "-O2"
 
     steps:
       - name: Maximize build space
@@ -112,17 +121,10 @@ jobs:
 
       - name: Build Kernel
         working-directory: kernel
-        env:
-          args: |+
-            LLVM=1 ARCH=arm64
-            CROSS_COMPILE=aarch64-linux-gnu-
-            CROSS_COMPILE_ARM32=arm-linux-gnueabi-
-            CC=clang LD=ld.lld HOSTLD=ld.lld
-            O=out KCFLAGS+=-O2
         run: |
           export KBUILD_BUILD_TIMESTAMP=$(date)
           export PATH=$GITHUB_WORKSPACE/clang/bin:$PATH
-          make -j$(nproc --all) ${args} ares_user_defconfig all
+          make -j$(nproc --all) ares_user_defconfig all
 
       - name: Upload Kernel Image
         uses: actions/upload-artifact@v4
