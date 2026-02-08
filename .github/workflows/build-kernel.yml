@@ -97,8 +97,12 @@ jobs:
             echo "CONFIG_KALLSYMS=y" >> Patches/ares_user_defconfig_append
             echo "CONFIG_KALLSYMS_ALL=y" >> Patches/ares_user_defconfig_append
           fi
-          # دمج defconfig النهائي
+          
           cat Patches/ares_user_defconfig_append >> kernel/arch/arm64/configs/ares_user_defconfig
+      - name: 🧙 Inject KernelSU-Next
+        run: |
+          git clone --depth=1 https://github.com/KernelSU-Next/KernelSU-Next.git KernelSU
+          bash KernelSU/tools/init_kernelsu.sh kernel-source
       - name: Build Kernel
         working-directory: kernel
         env:
