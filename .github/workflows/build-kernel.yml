@@ -30,15 +30,6 @@ jobs:
       CCACHE_HARDLINK: "true"
       CCACHE_DIR: /home/runner/.ccache
       CCACHE_MAXSIZE: 8G
-      LLVM: "1"
-      ARCH: "arm64"
-      CROSS_COMPILE: "aarch64-linux-gnu-"
-      CROSS_COMPILE_ARM32: "arm-linux-gnueabi-"
-      CC: "clang"
-      LD: "ld.lld"
-      HOSTLD: "ld.lld"
-      O: "out"
-      KCFLAGS: "-O2"
 
     steps:
       - name: Maximize build space
@@ -55,7 +46,6 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y git ccache p7zip-full wget
-
       - name: Restore ccache
         uses: actions/cache@v4
         with:
@@ -63,7 +53,6 @@ jobs:
           key: ccache-${{ runner.os }}-${{ github.ref }}
           restore-keys: |
             ccache-${{ runner.os }}-
-
       - uses: actions/checkout@v5
 
       - name: Get Kernel Source
@@ -73,27 +62,20 @@ jobs:
           ref: ${{ inputs.SOURCECODE_BRANCH }}
           path: kernel
 
-      # ========== SETUP CLANG 23 (Mandi-Sa) ==========
-      - name: Download Clang 23
+      # ========== SETUP CLANG 20 ==========
+      - name: Download Clang 20
         run: |
           mkdir -p clang
-          wget -q https://github.com/Mandi-Sa/clang/releases/download/amd64-kernel-arm_static-23/llvm23.0.0-binutils2.45.1_amd64-kernel-arm_static-20260118.7z
-          # فك الضغط باستخدام 7z لأن الملف بصيغة .7z
-          7z x llvm23.0.0-binutils2.45.1_amd64-kernel-arm_static-20260118.7z -oclang/
-          rm llvm23.0.0-binutils2.45.1_amd64-kernel-arm_static-20260118.7z
-
+          wget -q https://github.com/ZyCromerZ/Clang/releases/download/20.0.0git-20241227-release/Clang-20.0.0git-20241227.tar.gz
+          tar -C clang/ -zxvf Clang-20.0.0git-20241227.tar.gz
+          rm Clang-20.0.0git-20241227.tar.gz
       - name: Copy defconfig
         run: |
-          # التأكد من وجود مجلد Patches
-          mkdir -p Patches
-          touch Patches/ares_user_defconfig_append
-
           # إضافة KPM إذا فعّل المستخدم
           if [ "${{ inputs.enable_feature_kpm }}" = "true" ]; then
             echo "CONFIG_KALLSYMS_ALL=y" >> Patches/ares_user_defconfig_append
             echo "CONFIG_KPM=y" >> Patches/ares_user_defconfig_append
           fi
-
           # إضافة دعم LXC إذا فعّل المستخدم
           if [ "${{ inputs.enable_feature_lxc }}" = "true" ]; then
             echo "CONFIG_NAMESPACES=y" >> Patches/ares_user_defconfig_append
@@ -115,17 +97,22 @@ jobs:
             echo "CONFIG_KALLSYMS=y" >> Patches/ares_user_defconfig_append
             echo "CONFIG_KALLSYMS_ALL=y" >> Patches/ares_user_defconfig_append
           fi
-
           # دمج defconfig النهائي
           cat Patches/ares_user_defconfig_append >> kernel/arch/arm64/configs/ares_user_defconfig
-
       - name: Build Kernel
         working-directory: kernel
+        env:
+          args: |+
+            LLVM=1 ARCH=arm64
+            CROSS_COMPILE=aarch64-linux-gnu-
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+            CROSS_COMPILE_COMPAT=arm-linux-gnueabi-
+            CC=clang LD=ld.lld HOSTLD=ld.lld
+            O=out KCFLAGS+=-O2 KCFLAGS_PERF+=-O3
         run: |
           export KBUILD_BUILD_TIMESTAMP=$(date)
           export PATH=$GITHUB_WORKSPACE/clang/bin:$PATH
-          make -j$(nproc --all) ares_user_defconfig all
-
+          make -j$(nproc --all) ${args} ares_user_defconfig all
       - name: Upload Kernel Image
         uses: actions/upload-artifact@v4
         with:
