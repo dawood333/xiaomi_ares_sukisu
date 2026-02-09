@@ -53,15 +53,15 @@ jobs:
       
       - name: Setup Cross-compile toolchain
         run: |
-          mkdir -p toolchain
+          mkdir -p clang
           wget -q https://github.com/ZyCromerZ/Clang/releases/download/20.0.0git-20241227-release/Clang-20.0.0git-20241227.tar.gz
           tar -C clang/ -zxvf Clang-20.0.0git-20241227.tar.gz
           rm Clang-20.0.0git-20241227.tar.gz
           
-       -name: Build Kernel
-       working-directory: kernel
-       env:
-        args: |+
+      - name: Build Kernel
+        working-directory: kernel
+        env:
+          args: |+
             LLVM=1 ARCH=arm64
             CROSS_COMPILE=aarch64-linux-gnu-
             CROSS_COMPILE_ARM32=arm-linux-gnueabi-
@@ -72,7 +72,6 @@ jobs:
           export KBUILD_BUILD_TIMESTAMP=$(date)
           export PATH=$GITHUB_WORKSPACE/clang/bin:$PATH
           make -j$(nproc --all) ${args} ares_user_defconfig all
-
       
       
       # خطوة رفع النتائج البرمجية (Artifacts)
