@@ -24,6 +24,7 @@ jobs:
     name: Build Kernel for MTK 4.14
     strategy:
       fail-fast: false
+
     env:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
@@ -45,7 +46,9 @@ jobs:
       - name: Install packages
         run: |
           sudo apt update
-          sudo apt install -y git ccache p7zip-full wget
+          sudo apt install -y git ccache p7zip-full wget \
+            bc bison flex libssl-dev make
+
       - name: Restore ccache
         uses: actions/cache@v4
         with:
@@ -53,8 +56,10 @@ jobs:
           key: ccache-${{ runner.os }}-${{ github.ref }}
           restore-keys: |
             ccache-${{ runner.os }}-
+
       - uses: actions/checkout@v5
 
+      # ================= Kernel Source =================
       - name: Get Kernel Source
         uses: actions/checkout@v5
         with:
@@ -62,21 +67,36 @@ jobs:
           ref: ${{ inputs.SOURCECODE_BRANCH }}
           path: kernel
 
-      # ========== SETUP CLANG 20 ==========
+      # ================= KernelSU Next =================
+      - name: Clone KernelSU Next
+        run: |
+          git clone https://github.com/KernelSU-Next/KernelSU.git kernel/KernelSU
+
+      - name: Apply KernelSU Next
+        working-directory: kernel
+        run: |
+          bash KernelSU/kernel/setup.sh
+
+      # ================= Clang 20 =================
       - name: Download Clang 20
         run: |
           mkdir -p clang
           wget -q https://github.com/ZyCromerZ/Clang/releases/download/20.0.0git-20241227-release/Clang-20.0.0git-20241227.tar.gz
           tar -C clang/ -zxvf Clang-20.0.0git-20241227.tar.gz
           rm Clang-20.0.0git-20241227.tar.gz
+
+      # ================= Defconfig =================
       - name: Copy defconfig
         run: |
-          # إضافة KPM إذا فعّل المستخدم
+          mkdir -p Patches
+
+          # KPM
           if [ "${{ inputs.enable_feature_kpm }}" = "true" ]; then
             echo "CONFIG_KALLSYMS_ALL=y" >> Patches/ares_user_defconfig_append
             echo "CONFIG_KPM=y" >> Patches/ares_user_defconfig_append
           fi
-          # إضافة دعم LXC إذا فعّل المستخدم
+
+          # LXC
           if [ "${{ inputs.enable_feature_lxc }}" = "true" ]; then
             echo "CONFIG_NAMESPACES=y" >> Patches/ares_user_defconfig_append
             echo "CONFIG_CGROUPS=y" >> Patches/ares_user_defconfig_append
@@ -86,8 +106,6 @@ jobs:
             echo "CONFIG_CGROUP_FREEZER=y" >> Patches/ares_user_defconfig_append
             echo "CONFIG_CGROUP_PIDS=y" >> Patches/ares_user_defconfig_append
             echo "CONFIG_MEMCG=y" >> Patches/ares_user_defconfig_append
-            echo "CONFIG_LXC=y" >> Patches/ares_user_defconfig_append
-            echo "CONFIG_KPM=y" >> Patches/ares_user_defconfig_append
             echo "CONFIG_SYSVIPC=y" >> Patches/ares_user_defconfig_append
             echo "CONFIG_PID_NS=y" >> Patches/ares_user_defconfig_append
             echo "CONFIG_UTS_NS=y" >> Patches/ares_user_defconfig_append
@@ -97,22 +115,27 @@ jobs:
             echo "CONFIG_KALLSYMS=y" >> Patches/ares_user_defconfig_append
             echo "CONFIG_KALLSYMS_ALL=y" >> Patches/ares_user_defconfig_append
           fi
-          # دمج defconfig النهائي
+
+          # دمج الخيارات + KernelSU
           cat Patches/ares_user_defconfig_append >> kernel/arch/arm64/configs/ares_user_defconfig
+          echo "CONFIG_KSU=y" >> kernel/arch/arm64/configs/ares_user_defconfig
+
+      # ================= Build =================
       - name: Build Kernel
         working-directory: kernel
         env:
-          args: |+
-            LLVM=1 ARCH=arm64
-            CROSS_COMPILE=aarch64-linux-gnu-
-            CROSS_COMPILE_ARM32=arm-linux-gnueabi-
-            CROSS_COMPILE_COMPAT=arm-linux-gnueabi-
-            CC=clang LD=ld.lld HOSTLD=ld.lld
-            O=out KCFLAGS+=-O2 KCFLAGS_PERF+=-O3
+          LLVM: 1
+          ARCH: arm64
+          CC: clang
+          LD: ld.lld
+          O: out
         run: |
-          export KBUILD_BUILD_TIMESTAMP=$(date)
           export PATH=$GITHUB_WORKSPACE/clang/bin:$PATH
-          make -j$(nproc --all) ${args} ares_user_defconfig all
+          export KBUILD_BUILD_TIMESTAMP=$(date)
+          make ares_user_defconfig
+          make -j$(nproc --all)
+
+      # ================= Upload =================
       - name: Upload Kernel Image
         uses: actions/upload-artifact@v4
         with:
