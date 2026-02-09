@@ -71,7 +71,6 @@ jobs:
       - name: Clone KernelSU Next
         run: |
           git clone https://github.com/KernelSU-Next/KernelSU.git kernel/KernelSU
-
       - name: Apply KernelSU Next
         working-directory: kernel
         run: |
