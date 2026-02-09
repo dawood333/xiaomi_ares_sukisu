@@ -22,9 +22,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     name: Build Kernel for MTK 4.14
-    strategy:
-      fail-fast: false
-
+    
     env:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
@@ -47,7 +45,7 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y git ccache p7zip-full wget \
-            bc bison flex libssl-dev make
+            bc bison flex libssl-dev make libelf-dev
 
       - name: Restore ccache
         uses: actions/cache@v4
@@ -57,24 +55,32 @@ jobs:
           restore-keys: |
             ccache-${{ runner.os }}-
 
-      - uses: actions/checkout@v5
-
       # ================= Kernel Source =================
       - name: Get Kernel Source
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
         with:
           repository: dawood333/mtk
           ref: ${{ inputs.SOURCECODE_BRANCH }}
           path: kernel
 
       # ================= KernelSU Next =================
-      - name: Clone KernelSU Next
-        run: |
-          git clone https://github.com/KernelSU-Next/KernelSU.git kernel/KernelSU
+      # هذا الجزء تم تعديله لحل مشكلة الـ Clone وتجنب طلب اسم المستخدم
+      - name: Setup KernelSU Next
+        uses: actions/checkout@v4
+        with:
+          repository: KernelSU-Next/KernelSU
+          path: kernel/KernelSU
+          fetch-depth: 0
+
       - name: Apply KernelSU Next
         working-directory: kernel
         run: |
-          bash KernelSU/kernel/setup.sh
+          if [ -f "KernelSU/kernel/setup.sh" ]; then
+            bash KernelSU/kernel/setup.sh
+          else
+            echo "KernelSU setup script not found!"
+            exit 1
+          fi
 
       # ================= Clang 20 =================
       - name: Download Clang 20
@@ -85,39 +91,40 @@ jobs:
           rm Clang-20.0.0git-20241227.tar.gz
 
       # ================= Defconfig =================
-      - name: Copy defconfig
+      - name: Update Defconfig
         run: |
-          mkdir -p Patches
+          DEFCONFIG="kernel/arch/arm64/configs/ares_user_defconfig"
+          
+          # تفعيل KernelSU الأساسي
+          echo "CONFIG_KSU=y" >> $DEFCONFIG
 
-          # KPM
+          # KPM Feature
           if [ "${{ inputs.enable_feature_kpm }}" = "true" ]; then
-            echo "CONFIG_KALLSYMS_ALL=y" >> Patches/ares_user_defconfig_append
-            echo "CONFIG_KPM=y" >> Patches/ares_user_defconfig_append
+            echo "CONFIG_KALLSYMS_ALL=y" >> $DEFCONFIG
+            echo "CONFIG_KPM=y" >> $DEFCONFIG
           fi
 
-          # LXC
+          # LXC Feature
           if [ "${{ inputs.enable_feature_lxc }}" = "true" ]; then
-            echo "CONFIG_NAMESPACES=y" >> Patches/ares_user_defconfig_append
-            echo "CONFIG_CGROUPS=y" >> Patches/ares_user_defconfig_append
-            echo "CONFIG_CGROUP_CPUACCT=y" >> Patches/ares_user_defconfig_append
-            echo "CONFIG_CGROUP_DEVICE=y" >> Patches/ares_user_defconfig_append
-            echo "CONFIG_CGROUP_SCHED=y" >> Patches/ares_user_defconfig_append
-            echo "CONFIG_CGROUP_FREEZER=y" >> Patches/ares_user_defconfig_append
-            echo "CONFIG_CGROUP_PIDS=y" >> Patches/ares_user_defconfig_append
-            echo "CONFIG_MEMCG=y" >> Patches/ares_user_defconfig_append
-            echo "CONFIG_SYSVIPC=y" >> Patches/ares_user_defconfig_append
-            echo "CONFIG_PID_NS=y" >> Patches/ares_user_defconfig_append
-            echo "CONFIG_UTS_NS=y" >> Patches/ares_user_defconfig_append
-            echo "CONFIG_MNT_NS=y" >> Patches/ares_user_defconfig_append
-            echo "CONFIG_IPC_NS=y" >> Patches/ares_user_defconfig_append
-            echo "CONFIG_DEVTMPFS=y" >> Patches/ares_user_defconfig_append
-            echo "CONFIG_KALLSYMS=y" >> Patches/ares_user_defconfig_append
-            echo "CONFIG_KALLSYMS_ALL=y" >> Patches/ares_user_defconfig_append
+            {
+              echo "CONFIG_NAMESPACES=y"
+              echo "CONFIG_CGROUPS=y"
+              echo "CONFIG_CGROUP_CPUACCT=y"
+              echo "CONFIG_CGROUP_DEVICE=y"
+              echo "CONFIG_CGROUP_SCHED=y"
+              echo "CONFIG_CGROUP_FREEZER=y"
+              echo "CONFIG_CGROUP_PIDS=y"
+              echo "CONFIG_MEMCG=y"
+              echo "CONFIG_SYSVIPC=y"
+              echo "CONFIG_PID_NS=y"
+              echo "CONFIG_UTS_NS=y"
+              echo "CONFIG_MNT_NS=y"
+              echo "CONFIG_IPC_NS=y"
+              echo "CONFIG_DEVTMPFS=y"
+              echo "CONFIG_KALLSYMS=y"
+              echo "CONFIG_KALLSYMS_ALL=y"
+            } >> $DEFCONFIG
           fi
-
-          # دمج الخيارات + KernelSU
-          cat Patches/ares_user_defconfig_append >> kernel/arch/arm64/configs/ares_user_defconfig
-          echo "CONFIG_KSU=y" >> kernel/arch/arm64/configs/ares_user_defconfig
 
       # ================= Build =================
       - name: Build Kernel
@@ -135,16 +142,11 @@ jobs:
           make -j$(nproc --all)
 
       # ================= Upload =================
-      - name: Upload Kernel Image
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: MTK_Kernel_Image
-          path: kernel/out/arch/arm64/boot/Image
-          compression-level: 9
-
-      - name: Upload DTB
-        uses: actions/upload-artifact@v4
-        with:
-          name: MTK_Kernel_DTB
-          path: kernel/out/arch/arm64/boot/dtb
+          name: MTK-Kernel-Build
+          path: |
+            kernel/out/arch/arm64/boot/Image
+            kernel/out/arch/arm64/boot/dtb
           compression-level: 9
