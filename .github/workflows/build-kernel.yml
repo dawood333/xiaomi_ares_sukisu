@@ -53,11 +53,10 @@ jobs:
       
       - name: Setup Neutron Clang
         run: |
-          mkdir neutron-clang
+          mkdir -p neutron-clang
           cd neutron-clang
-          # تحميل Neutron Clang باستخدام Script التحميل الرسمي الخاص بهم لضمان أحدث نسخة
-          curl -LSs "https://raw.githubusercontent.com/dakkshesh07/neutron-clang/main/antman" | bash -s -- -S
-          
+          curl -LSs "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman" | bash -s -- -S
+
       - name: Build Kernel
         working-directory: kernel
         env:
@@ -72,11 +71,12 @@ jobs:
             KCFLAGS_PERF+=-O3
         run: |
           export KBUILD_BUILD_TIMESTAMP=$(date)
-          # إضافة مسار Neutron Clang إلى PATH
+          # إضافة Neutron Clang إلى المسار
           export PATH=$GITHUB_WORKSPACE/neutron-clang/bin:$PATH
           
-          # التأكد من النسخة في السجلات
+          # التحقق من الإصدارات (Binutils + Clang)
           clang --version
+          ld.lld --version
           
           make -j$(nproc --all) ${args} ares_defconfig
           make -j$(nproc --all) ${args} all
