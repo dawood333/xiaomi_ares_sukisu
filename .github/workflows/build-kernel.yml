@@ -32,7 +32,7 @@ jobs:
           remove-codeql: 'true'
 
       - name: Install Package
-        run: sudo apt update && sudo apt install -y p7zip-full git ccache curl tar xz-utils zstd
+        run: sudo apt update && sudo apt install -y p7zip-full git ccache curl tar xz-utils zstd libarchive-tools
 
       - name: Restore ccache
         uses: actions/cache@v4
@@ -51,15 +51,13 @@ jobs:
           ref: ${{ inputs.SOURCECODE_BRANCH }}
           path: kernel
       
-      - name: Setup Neutron Clang (Version 11032023)
+      - name: Setup Latest Neutron Clang
         run: |
           mkdir -p neutron-clang
-          # تحميل الإصدار المحدد 11032023 مباشرة
-          curl -LO "https://github.com/Neutron-Toolchains/clang-build-catalogue/releases/download/11032023/neutron-clang-11032023.tar.zst"
-          
-          # فك الضغط باستخدام zstd
-          tar -I zstd -xf neutron-clang-11032023.tar.zst -C neutron-clang/
-          rm neutron-clang-11032023.tar.zst
+          curl -LSs "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman" > antman
+          chmod +x antman
+          ./antman -S
+          echo "$GITHUB_WORKSPACE/neutron-clang/bin" >> $GITHUB_PATH
 
       - name: Build Kernel
         working-directory: kernel
@@ -72,28 +70,28 @@ jobs:
             CROSS_COMPILE_ARM32=arm-linux-gnueabi-
             O=out
             KCFLAGS+=-O3
-            KCFLAGS_PERF+=-O3
+            KCFLAGS+=-w
+            W=0
         run: |
           export KBUILD_BUILD_TIMESTAMP=$(date)
-          # تعيين المسار لـ Neutron Clang
           export PATH=$GITHUB_WORKSPACE/neutron-clang/bin:$PATH
           
-          # التحقق من الإصدار في السجلات للتأكد
-          if ! command -v clang &> /dev/null; then
-            echo "Error: Neutron Clang 11032023 not found!"
-            exit 1
-          fi
-          
+          # التحقق من أن المترجم يعمل
           clang --version
           
-          # بدء البناء
+          # إعداد ملف التكوين
           make -j$(nproc --all) ${args} ares_defconfig
+          
+          # تفعيل LTO إذا كان مدعوماً في الكود المصدري
+          scripts/config --file out/.config -e LTO_CLANG -e LTO_CLANG_THIN
+          
+          # بدء البناء النهائي
           make -j$(nproc --all) ${args} all
       
       - name: Upload Kernel Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel-K40GE-Neutron-11032023-${{ inputs.SOURCECODE_BRANCH }}
+          name: Kernel-K40GE-Neutron-LTO-${{ inputs.SOURCECODE_BRANCH }}
           path: |
             kernel/out/arch/arm64/boot/Image
             kernel/out/arch/arm64/boot/Image.gz
