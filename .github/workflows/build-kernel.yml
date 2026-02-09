@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       SOURCECODE_BRANCH:
-        description: '源码分支名称或修订版'
+        description: '源码分支名称 or Revision'
         required: true
         default: 'lineage-23.1'
 
@@ -51,9 +51,12 @@ jobs:
           ref: ${{ inputs.SOURCECODE_BRANCH }}
           path: kernel
       
-      - name: Setup Proton Clang
+      - name: Setup Neutron Clang
         run: |
-          git clone --depth=1 https://github.com/kdrag0n/proton-clang.git proton-clang
+          mkdir neutron-clang
+          cd neutron-clang
+          # تحميل Neutron Clang باستخدام Script التحميل الرسمي الخاص بهم لضمان أحدث نسخة
+          curl -LSs "https://raw.githubusercontent.com/dakkshesh07/neutron-clang/main/antman" | bash -s -- -S
           
       - name: Build Kernel
         working-directory: kernel
@@ -65,18 +68,23 @@ jobs:
             CROSS_COMPILE=aarch64-linux-gnu-
             CROSS_COMPILE_ARM32=arm-linux-gnueabi-
             O=out
-            KCFLAGS+=-O2
+            KCFLAGS+=-O3
             KCFLAGS_PERF+=-O3
         run: |
           export KBUILD_BUILD_TIMESTAMP=$(date)
-          export PATH=$GITHUB_WORKSPACE/proton-clang/bin:$PATH
+          # إضافة مسار Neutron Clang إلى PATH
+          export PATH=$GITHUB_WORKSPACE/neutron-clang/bin:$PATH
+          
+          # التأكد من النسخة في السجلات
+          clang --version
+          
           make -j$(nproc --all) ${args} ares_defconfig
           make -j$(nproc --all) ${args} all
       
       - name: Upload Kernel Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel-K40GE-${{ inputs.SOURCECODE_BRANCH }}
+          name: Kernel-K40GE-Neutron-${{ inputs.SOURCECODE_BRANCH }}
           path: |
             kernel/out/arch/arm64/boot/Image
             kernel/out/arch/arm64/boot/Image.gz
