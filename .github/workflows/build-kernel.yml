@@ -57,20 +57,17 @@ jobs:
           curl -LSs "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman" > antman
           chmod +x antman
           ./antman -S
-          # إضافة المسار بشكل إجباري في مقدمة النظام
           echo "$GITHUB_WORKSPACE/neutron-clang/bin" >> $GITHUB_PATH
 
       - name: Build Kernel
         working-directory: kernel
         run: |
-          # تعريف المسارات محلياً لضمان الأولوية القصوى لـ Neutron
           export PATH=$GITHUB_WORKSPACE/neutron-clang/bin:$PATH
           export KBUILD_BUILD_TIMESTAMP=$(date)
           
-          # التحقق من أن المترجم الصحيح هو الذي يعمل (يجب أن يظهر Neutron)
+          # عرض النسخة للتأكد من استخدام Neutron وليس Clang النظام
           clang --version
           
-          # تعريف المتغيرات مباشرة داخل الأمر لتجنب مشاكل Kbuild
           MAKE_ARGS="ARCH=arm64 \
                      LLVM=1 \
                      LLVM_IAS=1 \
@@ -81,13 +78,16 @@ jobs:
                      HOSTCFLAGS=-w \
                      HOSTCXXFLAGS=-w"
 
-          # 1. إعداد الإعدادات الافتراضية
+          # 1. إعداد الإعدادات الافتراضية للجهاز
           make -j$(nproc --all) $MAKE_ARGS ares_defconfig
           
-          # 2. تفعيل LTO
+          # 2. تفعيل ThinLTO برمجياً
           scripts/config --file out/.config -e LTO_CLANG -e LTO_CLANG_THIN
           
-          # 3. البناء النهائي (إزالة W=0 لتجنب الخطأ)
+          # 3. تحديث الإعدادات للموافقة التلقائية على الخيارات الجديدة (حل المشكلة السابقة)
+          make -j$(nproc --all) $MAKE_ARGS olddefconfig
+          
+          # 4. البناء النهائي
           make -j$(nproc --all) $MAKE_ARGS all
       
       - name: Upload Kernel Artifacts
@@ -100,3 +100,4 @@ jobs:
             kernel/out/arch/arm64/boot/Image.gz-dtb
             kernel/out/arch/arm64/boot/dts/mediatek/ares.dtb
           if-no-files-found: warn
+          
