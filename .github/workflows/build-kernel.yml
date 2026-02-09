@@ -6,7 +6,7 @@ on:
       SOURCECODE_BRANCH:
         description: '源码分支名称或修订版'
         required: true
-        default: 'U-dev'
+        default: 'rio-23.0'
 
 jobs:
   build:
@@ -47,7 +47,7 @@ jobs:
       - name: Get Kernel Source Code
         uses: actions/checkout@v5
         with:
-          repository: MerCuJerry/android_kernel_aresin
+          repository: Eron-Evan/android_kernel_xiaomi_mt6893
           ref: ${{ inputs.SOURCECODE_BRANCH }}
           path: kernel
       
@@ -69,7 +69,7 @@ jobs:
         run: |
           export KBUILD_BUILD_TIMESTAMP=$(date)
           export PATH=/usr/lib/ccache:$GITHUB_WORKSPACE/toolchain/bin:$PATH
-          make -j$(nproc --all) ${args} ares_user_defconfig all
+          make -j$(nproc --all) ${args} ares_defconfig all
 
       
       
