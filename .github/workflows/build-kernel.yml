@@ -32,7 +32,7 @@ jobs:
           remove-codeql: 'true'
 
       - name: Install Package
-        run: sudo apt update && sudo apt install -y p7zip-full git ccache
+        run: sudo apt update && sudo apt install -y p7zip-full git ccache curl tar xz-utils zstd
 
       - name: Restore ccache
         uses: actions/cache@v4
@@ -51,11 +51,15 @@ jobs:
           ref: ${{ inputs.SOURCECODE_BRANCH }}
           path: kernel
       
-      - name: Setup Neutron Clang
+      - name: Setup Neutron Clang (Version 11032023)
         run: |
           mkdir -p neutron-clang
-          cd neutron-clang
-          curl -LSs "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman" | bash -s -- -S
+          # تحميل الإصدار المحدد 11032023 مباشرة
+          curl -LO "https://github.com/Neutron-Toolchains/clang-build-catalogue/releases/download/11032023/neutron-clang-11032023.tar.zst"
+          
+          # فك الضغط باستخدام zstd
+          tar -I zstd -xf neutron-clang-11032023.tar.zst -C neutron-clang/
+          rm neutron-clang-11032023.tar.zst
 
       - name: Build Kernel
         working-directory: kernel
@@ -71,20 +75,25 @@ jobs:
             KCFLAGS_PERF+=-O3
         run: |
           export KBUILD_BUILD_TIMESTAMP=$(date)
-          # إضافة Neutron Clang إلى المسار
+          # تعيين المسار لـ Neutron Clang
           export PATH=$GITHUB_WORKSPACE/neutron-clang/bin:$PATH
           
-          # التحقق من الإصدارات (Binutils + Clang)
-          clang --version
-          ld.lld --version
+          # التحقق من الإصدار في السجلات للتأكد
+          if ! command -v clang &> /dev/null; then
+            echo "Error: Neutron Clang 11032023 not found!"
+            exit 1
+          fi
           
+          clang --version
+          
+          # بدء البناء
           make -j$(nproc --all) ${args} ares_defconfig
           make -j$(nproc --all) ${args} all
       
       - name: Upload Kernel Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel-K40GE-Neutron-${{ inputs.SOURCECODE_BRANCH }}
+          name: Kernel-K40GE-Neutron-11032023-${{ inputs.SOURCECODE_BRANCH }}
           path: |
             kernel/out/arch/arm64/boot/Image
             kernel/out/arch/arm64/boot/Image.gz
