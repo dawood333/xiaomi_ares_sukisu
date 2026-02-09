@@ -54,22 +54,24 @@ jobs:
       - name: Setup Cross-compile toolchain
         run: |
           mkdir -p toolchain
-          cd toolchain
-          wget -q https://github.com/Mandi-Sa/clang/releases/download/amd64-kernel-arm_static-22/llvm22.0.0-binutils2.44_amd64-kernel-arm_static-20251116.7z
-          7za x llvm22.0.0-binutils2.44_amd64-kernel-arm_static-20251116.7z
-          rm llvm22.0.0-binutils2.44_amd64-kernel-arm_static-20251116.7z
-      
-      - name: Build Kernel for K40GE
-        working-directory: kernel
-        env:
-          args: |+
-            LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-
-            CROSS_COMPILE_ARM32=arm-linux-gnueabi- CROSS_COMPILE_COMPAT=arm-linux-gnueabi-
-            CC=clang LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS+=-O2 KCFLAGS_PERF+=-O3
+          wget -q https://github.com/ZyCromerZ/Clang/releases/download/20.0.0git-20241227-release/Clang-20.0.0git-20241227.tar.gz
+          tar -C clang/ -zxvf Clang-20.0.0git-20241227.tar.gz
+          rm Clang-20.0.0git-20241227.tar.gz
+          
+       -name: Build Kernel
+       working-directory: kernel
+       env:
+        args: |+
+            LLVM=1 ARCH=arm64
+            CROSS_COMPILE=aarch64-linux-gnu-
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+            CROSS_COMPILE_COMPAT=arm-linux-gnueabi-
+            CC=clang LD=ld.lld HOSTLD=ld.lld
+            O=out KCFLAGS+=-O2 KCFLAGS_PERF+=-O3
         run: |
           export KBUILD_BUILD_TIMESTAMP=$(date)
-          export PATH=/usr/lib/ccache:$GITHUB_WORKSPACE/toolchain/bin:$PATH
-          make -j$(nproc --all) ${args} ares_defconfig all
+          export PATH=$GITHUB_WORKSPACE/clang/bin:$PATH
+          make -j$(nproc --all) ${args} ares_user_defconfig all
 
       
       
