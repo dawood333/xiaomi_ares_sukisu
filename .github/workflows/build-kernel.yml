@@ -71,7 +71,7 @@ jobs:
         run: |
           export KBUILD_BUILD_TIMESTAMP=$(date)
           export PATH=$GITHUB_WORKSPACE/clang/bin:$PATH
-          make -j$(nproc --all) ${args} ares_user_defconfig all
+          make -j$(nproc --all) ${args} ares_defconfig all
       
       
       # خطوة رفع النتائج البرمجية (Artifacts)
