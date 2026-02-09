@@ -71,6 +71,8 @@ jobs:
           export PATH=/usr/lib/ccache:$GITHUB_WORKSPACE/toolchain/bin:$PATH
           make -j$(nproc --all) ${args} ares_user_defconfig all
 
+      
+      
       # خطوة رفع النتائج البرمجية (Artifacts)
       - name: Upload Kernel Artifacts
         uses: actions/upload-artifact@v4
@@ -80,6 +82,6 @@ jobs:
             kernel/out/arch/arm64/boot/Image
             kernel/out/arch/arm64/boot/Image.gz
             kernel/out/arch/arm64/boot/Image.gz-dtb
-            kernel/out/arch/arm64/boot/dtbo.img
-            kernel/out/arch/arm64/boot/dtb.img
+            kernel/out/arch/arm64/boot/dts/mediatek/ares.dtb
+            
           if-no-files-found: warn
