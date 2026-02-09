@@ -71,7 +71,7 @@ jobs:
       - name: Apply KernelSU Next (legacy)
         working-directory: kernel
         run: |
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
+          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s nongki
 
       # ================= Clang 20 =================
       - name: Download Clang 20
