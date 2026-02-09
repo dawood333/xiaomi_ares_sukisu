@@ -51,30 +51,28 @@ jobs:
           ref: ${{ inputs.SOURCECODE_BRANCH }}
           path: kernel
       
-      - name: Setup Cross-compile toolchain
+      - name: Setup Proton Clang
         run: |
-          mkdir -p clang
-          wget -q https://github.com/ZyCromerZ/Clang/releases/download/20.0.0git-20241227-release/Clang-20.0.0git-20241227.tar.gz
-          tar -C clang/ -zxvf Clang-20.0.0git-20241227.tar.gz
-          rm Clang-20.0.0git-20241227.tar.gz
+          git clone --depth=1 https://github.com/kdrag0n/proton-clang.git proton-clang
           
       - name: Build Kernel
         working-directory: kernel
         env:
           args: |+
-            LLVM=1 ARCH=arm64
+            ARCH=arm64
+            LLVM=1
+            LLVM_IAS=1
             CROSS_COMPILE=aarch64-linux-gnu-
             CROSS_COMPILE_ARM32=arm-linux-gnueabi-
-            CROSS_COMPILE_COMPAT=arm-linux-gnueabi-
-            CC=clang LD=ld.lld HOSTLD=ld.lld
-            O=out KCFLAGS+=-O2 KCFLAGS_PERF+=-O3
+            O=out
+            KCFLAGS+=-O2
+            KCFLAGS_PERF+=-O3
         run: |
           export KBUILD_BUILD_TIMESTAMP=$(date)
-          export PATH=$GITHUB_WORKSPACE/clang/bin:$PATH
-          make -j$(nproc --all) ${args} ares_defconfig all
+          export PATH=$GITHUB_WORKSPACE/proton-clang/bin:$PATH
+          make -j$(nproc --all) ${args} ares_defconfig
+          make -j$(nproc --all) ${args} all
       
-      
-      # خطوة رفع النتائج البرمجية (Artifacts)
       - name: Upload Kernel Artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -84,5 +82,4 @@ jobs:
             kernel/out/arch/arm64/boot/Image.gz
             kernel/out/arch/arm64/boot/Image.gz-dtb
             kernel/out/arch/arm64/boot/dts/mediatek/ares.dtb
-            
           if-no-files-found: warn
