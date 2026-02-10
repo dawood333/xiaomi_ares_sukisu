@@ -54,7 +54,7 @@ jobs:
       - name: Setup LeCmnGend Clang 15
         run: |
           # سحب النسخة 15 مباشرة باستخدام --branch
-          git clone --depth=1 -b clang-15 https://gitlab.com/LeCmnGend/clang.git toolchain
+          git clone --depth=1 https://gitlab.com/LeCmnGend/proton-clang.git -b clang-15 proton-clang
           # التأكد من إصدار المترجم في السجلات
           ./toolchain/bin/clang --version
 
