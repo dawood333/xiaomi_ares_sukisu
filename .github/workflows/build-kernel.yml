@@ -6,7 +6,7 @@ on:
       SOURCECODE_BRANCH:
         description: '源码分支名称或修订版'
         required: true
-        default: 'lineage-23.1'
+        default: 'rio-23.0'
 
 jobs:
   build:
