@@ -1,10 +1,9 @@
 name: Build Kernel
-
 on:
   workflow_dispatch:
     inputs:
       SOURCECODE_BRANCH:
-        description: '源码分支名称 or Revision'
+        description: '源码分支名称或修订版'
         required: true
         default: 'lineage-23.1'
 
@@ -19,7 +18,8 @@ jobs:
       CCACHE_MAXSIZE: 8G
     strategy:
       fail-fast: false
-    name: Build Kernel for K40GE
+
+    name: Build Kernel for K40GE (Clang 15)
     steps:
       - name: Maximize build space
         uses: easimon/maximize-build-space@master
@@ -32,13 +32,13 @@ jobs:
           remove-codeql: 'true'
 
       - name: Install Package
-        run: sudo apt update && sudo apt install -y p7zip-full git ccache curl tar xz-utils zstd libarchive-tools
+        run: sudo apt update && sudo apt install -y p7zip-full git ccache
 
       - name: Restore ccache
         uses: actions/cache@v4
         with:
           path: /home/runner/.ccache
-          key: ccache-${{ runner.os }}-${{ github.ref }}
+          key: ccache-${{ runner.os }}-${{ inputs.SOURCECODE_BRANCH }}
           restore-keys: |
             ccache-${{ runner.os }}-
 
@@ -50,54 +50,39 @@ jobs:
           repository: Eron-Evan/android_kernel_xiaomi_mt6893
           ref: ${{ inputs.SOURCECODE_BRANCH }}
           path: kernel
-      
-      - name: Setup Latest Neutron Clang
+
+      - name: Setup LeCmnGend Clang 15
         run: |
-          mkdir -p neutron-clang
-          curl -LSs "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman" > antman
-          chmod +x antman
-          ./antman -S
-          echo "$GITHUB_WORKSPACE/neutron-clang/bin" >> $GITHUB_PATH
+          # سحب النسخة 15 مباشرة باستخدام --branch
+          git clone --depth=1 -b clang-15 https://gitlab.com/LeCmnGend/clang.git toolchain
+          # التأكد من إصدار المترجم في السجلات
+          ./toolchain/bin/clang --version
 
       - name: Build Kernel
         working-directory: kernel
+        env:
+          args: |+
+            ARCH=arm64
+            LLVM=1
+            LLVM_IAS=1
+            CROSS_COMPILE=aarch64-linux-gnu-
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+            O=out
+            KCFLAGS+=-O2
+            KCFLAGS_PERF+=-O3
         run: |
-          export PATH=$GITHUB_WORKSPACE/neutron-clang/bin:$PATH
           export KBUILD_BUILD_TIMESTAMP=$(date)
-          
-          # عرض النسخة للتأكد من استخدام Neutron وليس Clang النظام
-          clang --version
-          
-          MAKE_ARGS="ARCH=arm64 \
-                     LLVM=1 \
-                     LLVM_IAS=1 \
-                     CROSS_COMPILE=aarch64-linux-gnu- \
-                     CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-                     O=out \
-                     KCFLAGS=-w \
-                     HOSTCFLAGS=-w \
-                     HOSTCXXFLAGS=-w"
+          export PATH=$GITHUB_WORKSPACE/toolchain/bin:$PATH
+          make -j$(nproc --all) ${args} ares_defconfig
+          make -j$(nproc --all) ${args} all
 
-          # 1. إعداد الإعدادات الافتراضية للجهاز
-          make -j$(nproc --all) $MAKE_ARGS ares_defconfig
-          
-          # 2. تفعيل ThinLTO برمجياً
-          scripts/config --file out/.config -e LTO_CLANG -e LTO_CLANG_THIN
-          
-          # 3. تحديث الإعدادات للموافقة التلقائية على الخيارات الجديدة (حل المشكلة السابقة)
-          make -j$(nproc --all) $MAKE_ARGS olddefconfig
-          
-          # 4. البناء النهائي
-          make -j$(nproc --all) $MAKE_ARGS all
-      
       - name: Upload Kernel Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel-K40GE-Neutron-LTO-${{ inputs.SOURCECODE_BRANCH }}
+          name: Kernel-K40GE-Clang15-${{ inputs.SOURCECODE_BRANCH }}
           path: |
             kernel/out/arch/arm64/boot/Image
             kernel/out/arch/arm64/boot/Image.gz
             kernel/out/arch/arm64/boot/Image.gz-dtb
             kernel/out/arch/arm64/boot/dts/mediatek/ares.dtb
           if-no-files-found: warn
-          
