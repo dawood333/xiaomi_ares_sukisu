@@ -1,4 +1,5 @@
 name: Build Kernel
+
 on:
   workflow_dispatch:
     inputs:
@@ -16,10 +17,7 @@ jobs:
       CCACHE_HARDLINK: "true"
       CCACHE_DIR: /home/runner/.ccache
       CCACHE_MAXSIZE: 8G
-    strategy:
-      fail-fast: false
 
-    name: Build Kernel for K40GE (Clang 15)
     steps:
       - name: Maximize build space
         uses: easimon/maximize-build-space@master
@@ -32,7 +30,9 @@ jobs:
           remove-codeql: 'true'
 
       - name: Install Package
-        run: sudo apt update && sudo apt install -y p7zip-full git ccache
+        run: |
+          sudo apt update
+          sudo apt install -y p7zip-full git ccache bc bison build-essential flex libssl-dev libelf-dev
 
       - name: Restore ccache
         uses: actions/cache@v4
@@ -42,7 +42,8 @@ jobs:
           restore-keys: |
             ccache-${{ runner.os }}-
 
-      - uses: actions/checkout@v5
+      - name: Checkout Workflow
+        uses: actions/checkout@v5
 
       - name: Get Kernel Source Code
         uses: actions/checkout@v5
@@ -51,35 +52,36 @@ jobs:
           ref: ${{ inputs.SOURCECODE_BRANCH }}
           path: kernel
 
-      - name: Setup LeCmnGend Clang 15
+      - name: Setup Proton Clang 15
         run: |
-          # سحب النسخة 15 مباشرة باستخدام --branch
-          git clone --depth=1 https://gitlab.com/LeCmnGend/proton-clang.git -b clang-15 proton-clang
-          # التأكد من إصدار المترجم في السجلات
+          # تحميل Proton Clang مباشرة في مجلد toolchain
+          git clone --depth=1 https://gitlab.com/LeCmnGend/proton-clang.git -b clang-15 toolchain
+          # التأكد من عمل المترجم
           ./toolchain/bin/clang --version
 
       - name: Build Kernel
         working-directory: kernel
-        env:
-          args: |+
-            ARCH=arm64
-            LLVM=1
-            LLVM_IAS=1
-            CROSS_COMPILE=aarch64-linux-gnu-
-            CROSS_COMPILE_ARM32=arm-linux-gnueabi-
-            O=out
-            KCFLAGS+=-O2
-            KCFLAGS_PERF+=-O3
         run: |
-          export KBUILD_BUILD_TIMESTAMP=$(date)
+          # إضافة المترجم للمسار
           export PATH=$GITHUB_WORKSPACE/toolchain/bin:$PATH
+          
+          # إعداد متغيرات البناء
+          args="ARCH=arm64 \
+                LLVM=1 \
+                LLVM_IAS=1 \
+                CROSS_COMPILE=aarch64-linux-gnu- \
+                CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+                O=out \
+                KCFLAGS=-O2"
+
+          # بدء التجميع
           make -j$(nproc --all) ${args} ares_defconfig
-          make -j$(nproc --all) ${args} all
+          make -j$(nproc --all) ${args}
 
       - name: Upload Kernel Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel-K40GE-Clang15-${{ inputs.SOURCECODE_BRANCH }}
+          name: Kernel-K40GE-ProtonClang15-${{ inputs.SOURCECODE_BRANCH }}
           path: |
             kernel/out/arch/arm64/boot/Image
             kernel/out/arch/arm64/boot/Image.gz
