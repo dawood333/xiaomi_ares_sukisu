@@ -11,7 +11,7 @@ on:
       SOURCECODE_BRANCH:
         description: '源码分支名称或修订版'
         required: true
-        default: 'U-dev'
+        default: 'T'
       SUKISU_BRANCH:
         description: 'SukiSU 分支名称或修订版'
         required: true
