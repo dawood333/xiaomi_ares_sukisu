@@ -3,10 +3,19 @@ name: Build Kernel
 on:
   workflow_dispatch:
     inputs:
+      enable_feature_kpm:
+        description: "是否启用kpm"
+        required: false
+        default: false
+        type: boolean
       SOURCECODE_BRANCH:
         description: '源码分支名称或修订版'
         required: true
-        default: 'rio-23.0'
+        default: 'U-dev'
+      SUKISU_BRANCH:
+        description: 'SukiSU 分支名称或修订版'
+        required: true
+        default: 'susfs-main'
 
 jobs:
   build:
@@ -17,7 +26,9 @@ jobs:
       CCACHE_HARDLINK: "true"
       CCACHE_DIR: /home/runner/.ccache
       CCACHE_MAXSIZE: 8G
-
+    strategy:
+      fail-fast: false
+    name: Build Kernel for K40GE
     steps:
       - name: Maximize build space
         uses: easimon/maximize-build-space@master
@@ -30,61 +41,143 @@ jobs:
           remove-codeql: 'true'
 
       - name: Install Package
-        run: |
-          sudo apt update
-          sudo apt install -y p7zip-full git ccache bc bison build-essential flex libssl-dev libelf-dev
+        run: sudo apt update && sudo apt install -y p7zip-full git ccache libssl-dev flex bison
 
       - name: Restore ccache
         uses: actions/cache@v4
         with:
           path: /home/runner/.ccache
-          key: ccache-${{ runner.os }}-${{ inputs.SOURCECODE_BRANCH }}
+          key: ccache-${{ runner.os }}-${{ github.ref }}
           restore-keys: |
             ccache-${{ runner.os }}-
 
-      - name: Checkout Workflow
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
 
       - name: Get Kernel Source Code
         uses: actions/checkout@v5
         with:
-          repository: Eron-Evan/android_kernel_xiaomi_mt6893
+          repository: MerCuJerry/android_kernel_aresin
           ref: ${{ inputs.SOURCECODE_BRANCH }}
           path: kernel
-
-      - name: Setup Proton Clang 15
+      
+      - name: Setup Proton Clang Toolchain
         run: |
-          # تحميل Proton Clang مباشرة في مجلد toolchain
-          git clone --depth=1 https://gitlab.com/LeCmnGend/proton-clang.git -b clang-15 toolchain
-          # التأكد من عمل المترجم
-          ./toolchain/bin/clang --version
-
-      - name: Build Kernel
+          git clone --depth=1 https://gitlab.com/LeCmnGend/proton-clang.git -b clang-15 $GITHUB_WORKSPACE/toolchain
+      
+      - name: Set up SukiSU
         working-directory: kernel
         run: |
-          # إضافة المترجم للمسار
-          export PATH=$GITHUB_WORKSPACE/toolchain/bin:$PATH
-          
-          # إعداد متغيرات البناء
-          args="ARCH=arm64 \
-                LLVM=1 \
-                LLVM_IAS=1 \
-                CROSS_COMPILE=aarch64-linux-gnu- \
-                CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-                O=out \
-                KCFLAGS=-O2"
+          echo DATE=$(date +%F) >> $GITHUB_ENV
+          export BRANCH=${{ inputs.SUKISU_BRANCH }}
+          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s $BRANCH
+          cd ./KernelSU
+          export KSU_VERSION=$(expr $(/usr/bin/git rev-list --count main) "+" 40000 "-" 2815)
+          echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
+          sed -i "s/DKSU_VERSION=12800/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile
 
-          # بدء التجميع
-          make -j$(nproc --all) ${args} ares_defconfig
+      - name: Get SukiSU Patches
+        uses: actions/checkout@v5
+        with:
+          repository: SukiSU-Ultra/SukiSU_patch
+          path: sukisu_patch
+
+      - name: Get susfs4ksu
+        run: |
+          git clone -b kernel-4.14 --depth=1 https://gitlab.com/simonpunk/susfs4ksu.git
+          cp $GITHUB_WORKSPACE/susfs4ksu/kernel_patches/fs/* $GITHUB_WORKSPACE/kernel/fs/
+          cp $GITHUB_WORKSPACE/susfs4ksu/kernel_patches/include/linux/* $GITHUB_WORKSPACE/kernel/include/linux/
+
+      - name: Get susfs Update patch
+        uses: actions/checkout@v5
+        with:
+          repository: JackA1ltman/NonGKI_Kernel_Build_2nd
+          sparse-checkout: Patches/Patch
+          ref: mainline
+          path: susfs_upgrade_patch
+
+      - name: Patch Kernel
+        working-directory: kernel
+        run: |
+          patch -p1 < $GITHUB_WORKSPACE/Patches/susfs-syscall-hooks.patch
+
+      - name: Apply KernelPatch for SUSFS
+        working-directory: kernel
+        run: |
+          patch -p1 -F 3 < $GITHUB_WORKSPACE/susfs4ksu/kernel_patches/50_add_susfs_in_kernel-4.14.patch
+          patch -p1 < $GITHUB_WORKSPACE/susfs_upgrade_patch/Patches/Patch/susfs_upgrade_to_1511_4.14.patch || true
+          if [ "${{ inputs.SOURCECODE_BRANCH }}" = "T" ]; then
+            patch -p1 < $GITHUB_WORKSPACE/Patches/susfs_upgrade_to_1511_4.14_fix_T.patch
+          fi
+          patch -p1 < $GITHUB_WORKSPACE/susfs_upgrade_patch/Patches/Patch/susfs_upgrade_to_1512_4.14.patch || true
+          if [ "${{ inputs.SOURCECODE_BRANCH }}" = "T" ]; then
+            patch -p1 < $GITHUB_WORKSPACE/Patches/susfs_upgrade_to_1512_4.14_fix_T.patch
+          fi
+          patch -p1 < $GITHUB_WORKSPACE/Patches/susfs_upgrade_to_1512_4.14_fix.patch
+          patch -p1 < $GITHUB_WORKSPACE/susfs_upgrade_patch/Patches/Patch/susfs_upgrade_to_2000_4.14.patch || true
+          patch -p1 < $GITHUB_WORKSPACE/Patches/susfs_upgrade_to_2000_4.14_fix_after.patch
+          if [ "${{ inputs.SOURCECODE_BRANCH }}" = "T" ]; then
+            patch -p1 < $GITHUB_WORKSPACE/Patches/susfs_upgrade_to_2000_4.14_fix_after_T.patch
+          fi
+
+      - name: Copy defconfig
+        run: |
+          if [ "${{ inputs.enable_feature_kpm }}" = "true" ]; then
+            echo "CONFIG_KALLSYMS_ALL=y" >> $GITHUB_WORKSPACE/Patches/ares_user_defconfig_append
+            echo "CONFIG_KPM=y" >> $GITHUB_WORKSPACE/Patches/ares_user_defconfig_append
+          fi
+          cat $GITHUB_WORKSPACE/Patches/ares_user_defconfig_append >> $GITHUB_WORKSPACE/kernel/arch/arm64/configs/ares_user_defconfig
+      
+      - name: Build Kernel for K40GE
+        working-directory: kernel
+        env:
+          args: |+
+            ARCH=arm64
+            CC=clang
+            NM=llvm-nm
+            OBJCOPY=llvm-objcopy
+            OBJDUMP=llvm-objdump
+            STRIP=llvm-strip
+            LD=ld.lld
+            CROSS_COMPILE=aarch64-linux-gnu-
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+            LLVM=1
+            LLVM_IAS=1
+            O=out
+            KCFLAGS+=-O2
+        run: |
+          export KBUILD_BUILD_TIMESTAMP=$(date)
+          export PATH=$GITHUB_WORKSPACE/toolchain/bin:/usr/lib/ccache:$PATH
+          make -j$(nproc --all) ${args} ares_user_defconfig
           make -j$(nproc --all) ${args}
 
-      - name: Upload Kernel Artifacts
+      - name: Apply KernelPatch for KPM
+        if: ${{ inputs.enable_feature_kpm }}
+        working-directory: kernel/out/arch/arm64/boot
+        run: |
+          cp $GITHUB_WORKSPACE/sukisu_patch/kpm/patch_linux .
+          chmod +x patch_linux
+          ./patch_linux
+          mv oImage Image
+
+      - name: Pack Kernel using Magiskboot
+        working-directory: Magiskboot
+        run: |
+            tar -xvf boot.tar.gz
+            chmod +x magiskboot
+            ./magiskboot unpack boot.img
+            cp $GITHUB_WORKSPACE/kernel/out/arch/arm64/boot/Image ./kernel
+            ./magiskboot repack boot.img boot_SukiSU_${{ env.KSUVER }}.img
+            cp $GITHUB_WORKSPACE/kernel/out/arch/arm64/boot/dtb ./dtb
+            ./magiskboot repack boot.img boot_SukiSU_${{ env.KSUVER }}_new_dtb.img
+
+      - name: Upload repacked boot image
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel-K40GE-ProtonClang15-${{ inputs.SOURCECODE_BRANCH }}
-          path: |
-            kernel/out/arch/arm64/boot/Image
-            kernel/out/arch/arm64/boot/Image.gz
-            kernel/out/arch/arm64/boot/Image.gz-dtb
-            kernel/out/arch/arm64/boot/dts/mediatek/ares.dtb
-          if-no-files-found: warn
+          name: K40GE_SukiSU_${{ env.KSUVER }}
+          path: Magiskboot/boot_SukiSU_${{ env.KSUVER }}.img
+      
+      - name: Upload repacked boot image with new dtb
+        uses: actions/upload-artifact@v4
+        with:
+          name: K40GE_SukiSU_${{ env.KSUVER }}_new_dtb
+          path: Magiskboot/boot_SukiSU_${{ env.KSUVER }}_new_dtb.img
