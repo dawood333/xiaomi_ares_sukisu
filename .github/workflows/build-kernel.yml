@@ -11,7 +11,7 @@ on:
       SOURCECODE_BRANCH:
         description: '源码分支名称或修订版'
         required: true
-        default: 'T'
+        default: 'U-dev'
       SUKISU_BRANCH:
         description: 'SukiSU 分支名称或修订版'
         required: true
@@ -41,7 +41,7 @@ jobs:
           remove-codeql: 'true'
 
       - name: Install Package
-        run: sudo apt update && sudo apt install -y p7zip-full git ccache libssl-dev flex bison
+        run: sudo apt update && sudo apt install -y p7zip-full git ccache
 
       - name: Restore ccache
         uses: actions/cache@v4
@@ -60,9 +60,13 @@ jobs:
           ref: ${{ inputs.SOURCECODE_BRANCH }}
           path: kernel
       
-      - name: Setup Proton Clang Toolchain
+      - name: Setup Cross-compile toolchain
         run: |
-          git clone --depth=1 https://gitlab.com/LeCmnGend/proton-clang.git -b clang-15 $GITHUB_WORKSPACE/toolchain
+          mkdir -p toolchain
+          cd toolchain
+          wget -q https://github.com/Mandi-Sa/clang/releases/download/amd64-kernel-arm_static-22/llvm22.0.0-binutils2.44_amd64-kernel-arm_static-20251116.7z
+          7za x llvm22.0.0-binutils2.44_amd64-kernel-arm_static-20251116.7z
+          rm llvm22.0.0-binutils2.44_amd64-kernel-arm_static-20251116.7z
       
       - name: Set up SukiSU
         working-directory: kernel
@@ -131,25 +135,14 @@ jobs:
         working-directory: kernel
         env:
           args: |+
-            ARCH=arm64
-            CC=clang
-            NM=llvm-nm
-            OBJCOPY=llvm-objcopy
-            OBJDUMP=llvm-objdump
-            STRIP=llvm-strip
-            LD=ld.lld
-            CROSS_COMPILE=aarch64-linux-gnu-
-            CROSS_COMPILE_ARM32=arm-linux-gnueabi-
-            LLVM=1
-            LLVM_IAS=1
-            O=out
-            KCFLAGS+=-O2
+            LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- CROSS_COMPILE_COMPAT=arm-linux-gnueabi-
+            CC=clang LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS+=-O2 KCFLAGS_PERF+=-O3
         run: |
           export KBUILD_BUILD_TIMESTAMP=$(date)
-          export PATH=$GITHUB_WORKSPACE/toolchain/bin:/usr/lib/ccache:$PATH
-          make -j$(nproc --all) ${args} ares_user_defconfig
-          make -j$(nproc --all) ${args}
-
+          export PATH=/usr/lib/ccache:$GITHUB_WORKSPACE/toolchain/bin:$PATH
+          make -j$(nproc --all) ${args} ares_user_defconfig all
+      
       - name: Apply KernelPatch for KPM
         if: ${{ inputs.enable_feature_kpm }}
         working-directory: kernel/out/arch/arm64/boot
@@ -175,9 +168,11 @@ jobs:
         with:
           name: K40GE_SukiSU_${{ env.KSUVER }}
           path: Magiskboot/boot_SukiSU_${{ env.KSUVER }}.img
+          compression-level: 9
       
       - name: Upload repacked boot image with new dtb
         uses: actions/upload-artifact@v4
         with:
           name: K40GE_SukiSU_${{ env.KSUVER }}_new_dtb
           path: Magiskboot/boot_SukiSU_${{ env.KSUVER }}_new_dtb.img
+          compression-level: 9
