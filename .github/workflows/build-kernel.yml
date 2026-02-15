@@ -59,7 +59,7 @@ jobs:
       - name: Get Kernel Source
         uses: actions/checkout@v5
         with:
-          repository: dawood333/mtk
+          repository: dawood333/Dody
           ref: ${{ inputs.SOURCECODE_BRANCH }}
           path: kernel
 
