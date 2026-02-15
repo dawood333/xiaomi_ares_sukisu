@@ -64,10 +64,11 @@ jobs:
           path: kernel
 
       # ========== SETUP PROTON CLANG 15 ==========
-      - name: Download Proton Clang 15
+      - name: Setup Proton Clang 15
         run: |
-          git clone https://gitlab.com/LeCmnGend/proton-clang.git --depth=1 -b 15 clang
-
+          # تحميل Proton Clang مباشرة في مجلد toolchain
+          git clone --depth=1 https://gitlab.com/LeCmnGend/proton-clang.git -b clang-15 toolchain
+          
       - name: Copy defconfig
         run: |
           # إضافة KPM إذا فعّل المستخدم
