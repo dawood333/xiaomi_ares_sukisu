@@ -46,7 +46,7 @@ jobs:
       - name: Get Kernel Source Code
         uses: actions/checkout@v5
         with:
-          repository: Eron-Evan/android_kernel_xiaomi_mt6893
+          repository: dawood333/Dody
           ref: ${{ inputs.SOURCECODE_BRANCH }}
           path: kernel
 
