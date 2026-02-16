@@ -1,4 +1,5 @@
 name: Build Kernel
+
 on:
   workflow_dispatch:
     inputs:
@@ -6,16 +7,6 @@ on:
         description: '源码分支名称或修订版'
         required: true
         default: 'rio-23.0'
-      enable_feature_kpm:
-        description: 'Enable KPM Support'
-        required: false
-        type: boolean
-        default: false
-      enable_feature_lxc:
-        description: 'Enable LXC/Docker Support'
-        required: false
-        type: boolean
-        default: false
 
 jobs:
   build:
@@ -26,6 +17,7 @@ jobs:
       CCACHE_HARDLINK: "true"
       CCACHE_DIR: /home/runner/.ccache
       CCACHE_MAXSIZE: 8G
+
     steps:
       - name: Maximize build space
         uses: easimon/maximize-build-space@master
@@ -41,7 +33,6 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y p7zip-full git ccache bc bison build-essential flex libssl-dev libelf-dev
-
       - name: Restore ccache
         uses: actions/cache@v4
         with:
@@ -49,78 +40,39 @@ jobs:
           key: ccache-${{ runner.os }}-${{ inputs.SOURCECODE_BRANCH }}
           restore-keys: |
             ccache-${{ runner.os }}-
-
       - name: Checkout Workflow
         uses: actions/checkout@v5
 
       - name: Get Kernel Source Code
         uses: actions/checkout@v5
         with:
-          repository: dawood333/Dody
+          repository: Eron-Evan/android_kernel_xiaomi_mt6893
           ref: ${{ inputs.SOURCECODE_BRANCH }}
           path: kernel
 
       - name: Setup Proton Clang 15
         run: |
+          # تحميل Proton Clang مباشرة في مجلد toolchain
           git clone --depth=1 https://gitlab.com/LeCmnGend/proton-clang.git -b clang-15 toolchain
+          # التأكد من عمل المترجم
           ./toolchain/bin/clang --version
-
-      - name: Copy and Patch defconfig
-        run: |
-          # إنشاء مجلد الباتشات إذا لم يكن موجوداً
-          mkdir -p Patches
-          touch Patches/ares_defconfig_append
-          
-          # إضافة KPM إذا فعّل المستخدم
-          if [ "${{ inputs.enable_feature_kpm }}" = "true" ]; then
-            echo "CONFIG_KALLSYMS_ALL=y" >> Patches/ares_defconfig_append
-            echo "CONFIG_KPM=y" >> Patches/ares_defconfig_append
-          fi
-          
-          # إضافة دعم LXC إذا فعّل المستخدم
-          if [ "${{ inputs.enable_feature_lxc }}" = "true" ]; then
-            {
-              echo "CONFIG_NAMESPACES=y"
-              echo "CONFIG_CGROUPS=y"
-              echo "CONFIG_CGROUP_CPUACCT=y"
-              echo "CONFIG_CGROUP_DEVICE=y"
-              echo "CONFIG_CGROUP_SCHED=y"
-              echo "CONFIG_CGROUP_FREEZER=y"
-              echo "CONFIG_CGROUP_PIDS=y"
-              echo "CONFIG_MEMCG=y"
-              echo "CONFIG_LXC=y"
-              echo "CONFIG_KPM=y"
-              echo "CONFIG_SYSVIPC=y"
-              echo "CONFIG_PID_NS=y"
-              echo "CONFIG_UTS_NS=y"
-              echo "CONFIG_MNT_NS=y"
-              echo "CONFIG_IPC_NS=y"
-              echo "CONFIG_DEVTMPFS=y"
-              echo "CONFIG_KALLSYMS=y"
-              echo "CONFIG_KALLSYMS_ALL=y"
-            } >> Patches/ares_defconfig_append
-          fi
-          
-          # دمج الإعدادات في ملف الـ defconfig الأصلي داخل السورس
-          cat Patches/ares_defconfig_append >> kernel/arch/arm64/configs/ares_defconfig
-          echo "Final defconfig patched successfully."
-
       - name: Build Kernel
         working-directory: kernel
         run: |
+          # إضافة المترجم للمسار
           export PATH=$GITHUB_WORKSPACE/toolchain/bin:$PATH
+          
+          # إعداد متغيرات البناء
           args="ARCH=arm64 \
                 LLVM=1 \
                 LLVM_IAS=1 \
-                CC=\"ccache clang\" \
                 CROSS_COMPILE=aarch64-linux-gnu- \
                 CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
                 O=out \
                 KCFLAGS=-O2"
-          
+          # بدء التجميع
           make -j$(nproc --all) ${args} ares_defconfig
           make -j$(nproc --all) ${args}
-
       - name: Upload Kernel Artifacts
         uses: actions/upload-artifact@v4
         with:
